@@ -1,9 +1,5 @@
-// Generate or retrieve session ID
-let sessionId = localStorage.getItem('session_id');
-if (!sessionId) {
-    sessionId = 'sess_' + Math.random().toString(36).substr(2, 9);
-    localStorage.setItem('session_id', sessionId);
-}
+// Generate a new session ID every time the page loads (including reloads)
+const sessionId = 'sess_' + Math.random().toString(36).substr(2, 9);
 
 const chatMessages = document.getElementById('chat-messages');
 const userInput = document.getElementById('user-input');
@@ -59,7 +55,7 @@ async function sendMessage(text = null) {
     showTypingIndicator(); // Show indicator
 
     try {
-        const response = await fetch(`${process.env.BACKEND_URL}/chat`, {
+        const response = await fetch(`http://localhost:8000/chat`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
