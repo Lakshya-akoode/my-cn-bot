@@ -150,7 +150,7 @@ function addQuickReplies(options) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-sendBtn.addEventListener('click', sendMessage);
+sendBtn.addEventListener('click', () => sendMessage());
 
 userInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
