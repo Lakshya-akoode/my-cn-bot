@@ -83,6 +83,121 @@ def save_appointment(data):
     with open(APPOINTMENTS_FILE, "w") as f:
         json.dump(appointments, f, indent=4)
 
+def extract_booking_details(message: str, context: str = ""):
+    """
+    Uses LLM to extract booking details from the message, using context if available.
+    Returns a dict with keys: name, phone, email, service, date.
+    Values are None if not found.
+    """
+    schema = {
+        "properties": {
+            "name": {"type": "string"},
+            "phone": {"type": "string"},
+            "email": {"type": "string"},
+            "service": {"type": "string"},
+            "date": {"type": "string"}
+        },
+        "type": "object"
+    }
+    
+    extraction_prompt = f"""
+    Extract booking details from the user's message.
+    Use the provided conversation context to resolve references like "this service" or "it".
+    Return a valid JSON object with the following fields: name, phone, email, service, date.
+    If a field is not present in the message or context, set it to null.
+    
+    Context:
+    {context}
+    
+    User message: "{message}"
+    """
+    
+    try:
+        # Simple invocation - better structured output handling could be done with tools/functions
+        # but for this simple use case, we ask for JSON directly.
+        res = llm.invoke(extraction_prompt + "\n\nReturn ONLY JSON.")
+        content = res.content.strip()
+        # Clean up code blocks if present
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0]
+        elif "```" in content:
+             content = content.split("```")[1].split("```")[0]
+             
+        data = json.loads(content)
+        return data
+    except Exception as e:
+        print(f"Extraction error: {e}")
+        return {}
+
+def get_next_question(session_id):
+    """
+    Determines the next state and question based on missing data.
+    """
+    state_data = sessions[session_id]
+    data = state_data["data"]
+    state = state_data["state"]
+
+    # Helpers for context
+    name = data.get("name", "")
+    service = data.get("service", "")
+
+    # Iterate through states to find the first missing info
+    # We enforce a linear order: Name -> Phone -> Email -> Service -> Date -> Confirm
+
+    # If currently in ASK_NAME, but we already have name, move to ASK_PHONE
+    if state == BookingState.ASK_NAME:
+        if data.get("name"):
+            sessions[session_id]["state"] = BookingState.ASK_PHONE
+            state = BookingState.ASK_PHONE
+        else:
+            if service:
+                return {"message": f"I can definitely help you book a {service}. First, what is your name?"}
+            return {"message": "Sure! I can help you with that. What is your name?"}
+
+    if state == BookingState.ASK_PHONE:
+        if data.get("phone"):
+            sessions[session_id]["state"] = BookingState.ASK_EMAIL
+            state = BookingState.ASK_EMAIL
+        else:
+            return {"message": f"Thanks {name}. What is your phone number?"}
+
+    if state == BookingState.ASK_EMAIL:
+        if data.get("email"):
+            sessions[session_id]["state"] = BookingState.ASK_SERVICE
+            state = BookingState.ASK_SERVICE
+        else:
+            return {"message": "Got it. What is your email address?"}
+
+    if state == BookingState.ASK_SERVICE:
+        if data.get("service"):
+            sessions[session_id]["state"] = BookingState.ASK_DATE
+            state = BookingState.ASK_DATE
+        else:
+            return {"message": f"Thanks {name}. What service are you interested in?"}
+
+    if state == BookingState.ASK_DATE:
+        if data.get("date"):
+            sessions[session_id]["state"] = BookingState.CONFIRM
+            state = BookingState.CONFIRM
+        else:
+             msg = "And when would you like to come in? (Date and Time)"
+             if service:
+                 msg = f"When would you like to schedule your {service}? (Date and Time)"
+             return {
+                "message": msg,
+                "ui_action": "date_picker"
+            }
+
+    if state == BookingState.CONFIRM:
+        name = data.get("name")
+        phone = data.get("phone")
+        email = data.get("email")
+        service = data.get("service")
+        date = data.get("date")
+        return {"message": f"Please confirm details:\n- Name: {name}\n- Phone: {phone}\n- Email: {email}\n- Service: {service}\n- Date: {date}\n\nType 'yes' to confirm or 'cancel' to stop."}
+
+    return {"message": "Something went wrong."}
+
 def process_booking(session_id: str, message: str, state_data: dict):
     state = state_data.get("state", BookingState.IDLE)
     data = state_data.get("data", {})
@@ -90,42 +205,56 @@ def process_booking(session_id: str, message: str, state_data: dict):
     
     if state == BookingState.IDLE:
         # Check for booking intent
-        if "book" in msg and "appointment" in msg:
-            sessions[session_id] = {"state": BookingState.ASK_NAME, "data": {}}
-            return {"message": "Sure! I can help you with that. What is your name?"}
+        # Relaxed condition: check for any strong booking keyword
+        booking_keywords = ["book", "appointment", "schedule", "visit", "reservation"]
+        if any(k in msg for k in booking_keywords):
+            # Smart extraction
+            # Retrieve context (last bot response) from session data if available
+            context = state_data.get("context", "")
+            extracted = extract_booking_details(message, context)
+            
+            # Merge extracted data
+            initial_data = {}
+            if extracted.get("name"): initial_data["name"] = extracted["name"]
+            if extracted.get("phone"): initial_data["phone"] = extracted["phone"]
+            if extracted.get("email"): initial_data["email"] = extracted["email"]
+            if extracted.get("service"): initial_data["service"] = extracted["service"]
+            if extracted.get("date"): initial_data["date"] = extracted["date"]
+            
+            sessions[session_id] = {"state": BookingState.ASK_NAME, "data": initial_data}
+            
+            # Check what we already have and jump to next state if needed
+            # We use a recursive/iterative check or just check immediately
+            
+            # Recursively determine next state/question
+            return get_next_question(session_id)
+            
         return None  # Fallback to RAG
 
     if state == BookingState.ASK_NAME:
         sessions[session_id]["data"]["name"] = message
         sessions[session_id]["state"] = BookingState.ASK_PHONE
-        return {"message": f"Thanks {message}. What is your phone number?"}
+        return get_next_question(session_id)
 
     if state == BookingState.ASK_PHONE:
         sessions[session_id]["data"]["phone"] = message
         sessions[session_id]["state"] = BookingState.ASK_EMAIL
-        return {"message": "Got it. What is your email address?"}
+        return get_next_question(session_id)
 
     if state == BookingState.ASK_EMAIL:
         sessions[session_id]["data"]["email"] = message
         sessions[session_id]["state"] = BookingState.ASK_SERVICE
-        return {"message": "Thanks. What service are you interested in?"}
+        return get_next_question(session_id)
 
     if state == BookingState.ASK_SERVICE:
         sessions[session_id]["data"]["service"] = message
         sessions[session_id]["state"] = BookingState.ASK_DATE
-        return {
-            "message": "And when would you like to come in? (Date and Time)",
-            "ui_action": "date_picker"
-        }
+        return get_next_question(session_id)
 
     if state == BookingState.ASK_DATE:
         sessions[session_id]["data"]["date"] = message
         sessions[session_id]["state"] = BookingState.CONFIRM
-        name = sessions[session_id]["data"]["name"]
-        phone = sessions[session_id]["data"]["phone"]
-        email = sessions[session_id]["data"]["email"]
-        service = sessions[session_id]["data"]["service"]
-        return {"message": f"Please confirm details:\n- Name: {name}\n- Phone: {phone}\n- Email: {email}\n- Service: {service}\n- Date: {message}\n\nType 'yes' to confirm or 'cancel' to stop."}
+        return get_next_question(session_id)
 
     if state == BookingState.CONFIRM:
         if msg in ["yes", "y", "confirm", "ok"]:
@@ -146,7 +275,7 @@ def chat(q: Query):
     
     # Initialize session if not exists
     if session_id not in sessions:
-        sessions[session_id] = {"state": BookingState.IDLE, "data": {}}
+        sessions[session_id] = {"state": BookingState.IDLE, "data": {}, "context": ""}
     
     # Try to process booking flow
     booking_response = process_booking(session_id, q.message, sessions[session_id])
@@ -170,4 +299,8 @@ Question: {q.message}
 """
 
     res = llm.invoke(prompt)
+    
+    # Update context with the latest Q&A for future reference
+    sessions[session_id]["context"] = f"User: {q.message}\nBot: {res.content}"
+    
     return {"reply": res.content}
