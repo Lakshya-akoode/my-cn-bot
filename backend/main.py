@@ -103,6 +103,12 @@ def extract_booking_details(message: str, context: str = ""):
     extraction_prompt = f"""
     Extract booking details from the user's message.
     Use the provided conversation context to resolve references like "this service" or "it".
+    
+    IMPORTANT:
+    - If the user says "book appointment" or "schedule visit" WITHOUT naming a specific service, look at the context to see what service was discussed.
+    - Do NOT extract generic terms like "appointment", "booking", "consultation", "service", "visit", "checkup" as the service name.
+    - If no specific service is found in message or context, return 'service': null.
+    
     Return a valid JSON object with the following fields: name, phone, email, service, date.
     If a field is not present in the message or context, set it to null.
     
@@ -209,8 +215,10 @@ def process_booking(session_id: str, message: str, state_data: dict):
         booking_keywords = ["book", "appointment", "schedule", "visit", "reservation"]
         if any(k in msg for k in booking_keywords):
             # Smart extraction
+            # Smart extraction
             # Retrieve context (last bot response) from session data if available
-            context = state_data.get("context", "")
+            history = state_data.get("history", [])
+            context = "\n".join(history[-5:]) # Use last 5 turns
             extracted = extract_booking_details(message, context)
             
             # Merge extracted data
@@ -275,7 +283,7 @@ def chat(q: Query):
     
     # Initialize session if not exists
     if session_id not in sessions:
-        sessions[session_id] = {"state": BookingState.IDLE, "data": {}, "context": ""}
+        sessions[session_id] = {"state": BookingState.IDLE, "data": {}, "history": []}
     
     # Try to process booking flow
     booking_response = process_booking(session_id, q.message, sessions[session_id])
@@ -301,6 +309,9 @@ Question: {q.message}
     res = llm.invoke(prompt)
     
     # Update context with the latest Q&A for future reference
-    sessions[session_id]["context"] = f"User: {q.message}\nBot: {res.content}"
+    if "history" not in sessions[session_id]:
+        sessions[session_id]["history"] = []
+    sessions[session_id]["history"].append(f"User: {q.message}")
+    sessions[session_id]["history"].append(f"Bot: {res.content}")
     
     return {"reply": res.content}
