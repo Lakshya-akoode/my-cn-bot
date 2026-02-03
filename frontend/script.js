@@ -55,7 +55,7 @@ async function sendMessage(text = null) {
     showTypingIndicator(); // Show indicator
 
     try {
-        const response = await fetch(`http://localhost:8000/chat`, {
+        const response = await fetch(`http://64.227.171.48:8000/chat`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
