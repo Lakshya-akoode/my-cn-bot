@@ -75,5 +75,13 @@
         "service": "alww",
         "date": "Fri, Feb 20, 2026, 12:40 PM",
         "created_at": "2026-02-03T12:40:08.959356"
+    },
+    {
+        "service": "Laser treatment",
+        "name": "lakshya",
+        "phone": "7879230515",
+        "email": "lakshyaqwq",
+        "date": "Thu, Feb 12, 2026, 10:52 AM",
+        "created_at": "2026-02-04T10:52:46.793993"
     }
 ]
