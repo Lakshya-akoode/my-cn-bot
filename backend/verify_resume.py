@@ -2,7 +2,7 @@ import requests
 import uuid
 import json
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://64.227.171.48:8000"
 SESSION_ID = str(uuid.uuid4())
 
 def send_message(message):

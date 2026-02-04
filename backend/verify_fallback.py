@@ -2,7 +2,7 @@ import requests
 import uuid
 import time
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://64.227.171.48:8000"
 
 def send_message(session_id, message):
     print(f"\nUser: {message}")
