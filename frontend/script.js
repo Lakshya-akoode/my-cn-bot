@@ -159,13 +159,14 @@ userInput.addEventListener('keypress', (e) => {
 });
 
 // Initial greeting
-const welcomeMsg = `Hello, I am the MYCN Medical Assistant.
+const welcomeMsg = `Hello, I am the CN Medical Assistant.
 
 I can help you with:`;
 
 addMessage(welcomeMsg, 'bot');
 addQuickReplies([
     "Information about our services and treatments",
-    "Doctor and clinic details",
+    "Providers and clinic details",
+    "Clinic days and hours open",
     "Book appointment"
 ]);
