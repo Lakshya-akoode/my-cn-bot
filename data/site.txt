@@ -260,7 +260,7 @@ Tuesday:
 Wednesday:
 10 AM – 5 PM
 Thursday:
-10 AM – 7 PM
+11 AM – 7 PM
 Friday:
 10 AM – 5 PM
 Saturday:
@@ -587,7 +587,7 @@ Tuesday:
 Wednesday:
 10 AM – 5 PM
 Thursday:
-10 AM – 7 PM
+11 AM – 7 PM
 Friday:
 10 AM – 5 PM
 Saturday:
