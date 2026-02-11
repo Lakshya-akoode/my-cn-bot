@@ -430,14 +430,40 @@ def chat(q: Query, request: Request):
     
     # Initialize session if not exists
     if session_id not in sessions:
-        sessions[session_id] = {"state": BookingState.IDLE, "data": {}, "history": [], "ip": client_ip}
+        sessions[session_id] = {"state": BookingState.IDLE, "data": {}, "history": [], "ip": client_ip, "last_fallback": False}
     else:
         # Update IP just in case it changed (though unlikely for same session)
         sessions[session_id]["ip"] = client_ip
     
+    # Check if user is saying "yes" after receiving the fallback message
+    msg_lower = q.message.strip().lower()
+    yes_keywords = ["yes", "yeah", "yep", "sure", "ok", "okay", "y", "please", "go ahead", "arrange"]
+    
+    if sessions[session_id].get("last_fallback", False) and any(keyword in msg_lower for keyword in yes_keywords):
+        # User agreed to arrange a call - initiate booking with context
+        history = sessions[session_id].get("history", [])
+        context = "\n".join(history[-5:])  # Use last 5 turns
+        
+        # Extract service from context
+        extracted = extract_booking_details(q.message, context)
+        
+        initial_data = {}
+        if extracted.get("service"):
+            initial_data["service"] = extracted["service"]
+        
+        # Start booking flow
+        sessions[session_id] = {"state": BookingState.ASK_NAME, "data": initial_data, "history": history, "ip": client_ip, "last_fallback": False}
+        
+        return {
+            "reply": get_next_question(session_id)["message"],
+            "ui_action": get_next_question(session_id).get("ui_action")
+        }
+    
     # Try to process booking flow
     booking_response = process_booking(session_id, q.message, sessions[session_id])
     if booking_response:
+        # Clear fallback flag when in active booking
+        sessions[session_id]["last_fallback"] = False
         return {
             "reply": booking_response["message"],
             "ui_action": booking_response.get("ui_action")
@@ -459,11 +485,18 @@ Question: {q.message}
     res = llm.invoke(prompt)
     bot_reply = res.content
 
+    # Check if the fallback message was sent
+    fallback_trigger = "Shall I arrange a quick call?"
+    if fallback_trigger in bot_reply:
+        sessions[session_id]["last_fallback"] = True
+    else:
+        sessions[session_id]["last_fallback"] = False
+
     # If we are in a booking flow but just answered an interruption, attempt to resume
     if sessions[session_id].get("state") != BookingState.IDLE:
         # Check if RAG returned the specific fallback message
-        fallback_trigger = "connect you with the right person"
-        if fallback_trigger in bot_reply:
+        fallback_trigger_alt = "connect you with the right person"
+        if fallback_trigger_alt in bot_reply:
              # Replace the fallback text with something more relevant to an existing booking
              bot_reply = "Good question — this actually depends on a few details. The doctor can explain this clearly during your visit."
 
