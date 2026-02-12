@@ -224,9 +224,9 @@ def get_next_question(session_id):
             sessions[session_id]["state"] = BookingState.CONFIRM
             state = BookingState.CONFIRM
         else:
-             msg = "And when would you like to come in? (Date and Time)"
+             msg = "And when would you like to request this appointment for? (Date and Time)"
              if service:
-                 msg = f"When would you like to schedule your {service}? (Date and Time)"
+                 msg = f"When would you like to request your {service} appointment? (Date and Time)"
              return {
                 "message": msg,
                 "resume_message": "When would you prefer to come in?",
@@ -239,7 +239,7 @@ def get_next_question(session_id):
         email = data.get("email")
         service = data.get("service")
         date = data.get("date")
-        return {"message": f"Please confirm details:\n- Name: {name}\n- Phone: {phone}\n- Email: {email}\n- Service: {service}\n- Date: {date}\n\nType 'yes' to confirm, 'edit' to change details, or 'cancel' to stop.", "resume_message": "Please confirm if these details look correct."}
+        return {"message": f"Please confirm details for your appointment request:\n- Name: {name}\n- Phone: {phone}\n- Email: {email}\n- Service: {service}\n- Date: {date}\n\nType 'yes' to submit request, 'edit' to change details, or 'cancel' to stop.", "resume_message": "Please confirm if these details look correct."}
 
     return {"message": "Something went wrong."}
 
@@ -276,6 +276,62 @@ def is_interruption(message: str, current_state: str) -> bool:
         return "True" in res.content
     except:
         return False
+
+def is_valid_appointment_time(date_str: str) -> tuple[bool, str]:
+    """
+    Validates if the date_str falls within business hours.
+    Returns (is_valid, error_message).
+    Business Hours:
+    Monday: 10 AM - 5 PM
+    Tuesday: 10 AM - 5 PM
+    Wednesday: 10 AM - 5 PM
+    Thursday: 11 AM - 7 PM
+    Friday: 10 AM - 5 PM
+    Saturday: 9 AM - 3 PM
+    Sunday: Closed
+    """
+    try:
+        # Expected format from frontend: "Mon, Jan 1, 2026, 10:00 AM"
+        # We can try to parse it flexibly
+        from dateutil import parser
+        dt = parser.parse(date_str)
+        
+        day = dt.weekday() # 0=Mon, 6=Sun
+        hour = dt.hour
+        minute = dt.minute
+        
+        # Check Sunday
+        if day == 6:
+            return False, "We are closed on Sundays. Please choose another day."
+            
+        # Define hours (start_hour, end_hour) - exclusive of end_hour for simplicity or inclusive?
+        # Let's say 5 PM is the last slot? or closing time? Usually closing time means last appointment must finish by then or start before.
+        # Let's assume these are opening hours.
+        
+        hours = {
+            0: (10, 17), # Mon
+            1: (10, 17), # Tue
+            2: (10, 17), # Wed
+            3: (11, 19), # Thu
+            4: (10, 17), # Fri
+            5: (9, 15),  # Sat
+        }
+        
+        start_h, end_h = hours[day]
+        
+        # Check simple hour bounds
+        if hour < start_h or hour >= end_h:
+            # Format times for friendly error
+            def fmt(h): return f"{h-12} PM" if h > 12 else f"{h} AM" if h < 12 else "12 PM"
+            return False, f"On {dt.strftime('%A')}s we are open from {fmt(start_h)} to {fmt(end_h)}."
+            
+        return True, ""
+    except Exception as e:
+        # If parsing fails, we might just let it pass or ask to retry.
+        # For now, let's treat it as valid to avoid blocking on format issues, 
+        # or log validation error.
+        print(f"Date validation error: {e}")
+        return True, ""
 
 def process_booking(session_id: str, message: str, state_data: dict):
     state = state_data.get("state", BookingState.IDLE)
@@ -406,20 +462,26 @@ def process_booking(session_id: str, message: str, state_data: dict):
         return get_next_question(session_id)
 
     if state == BookingState.ASK_DATE:
+        # Validate date before accepting
+        is_valid, error_msg = is_valid_appointment_time(message)
+        if not is_valid:
+            return {"message": f"{error_msg} Please choose a different time."}
+            
         sessions[session_id]["data"]["date"] = message
         sessions[session_id]["state"] = BookingState.CONFIRM
         return get_next_question(session_id)
 
     if state == BookingState.CONFIRM:
-        if msg in ["yes", "y", "confirm", "ok"]:
+        if msg in ["yes", "y", "confirm", "ok", "submit"]:
             save_appointment(sessions[session_id]["data"], ip_address)
             sessions[session_id] = {"state": BookingState.IDLE, "data": {}}
-            return {"message": "Appointment saved! We look forward to seeing you."}
+            return {"message": "Your appointment request has been submitted. Please note your appointment is not booked until the office sends you a confirmation text."}
         elif msg in ["no", "cancel", "stop"]:
             sessions[session_id] = {"state": BookingState.IDLE, "data": {}}
             return {"message": "Booking cancelled."}
         else:
-            return {"message": "Please type 'yes' to save the appointment, 'edit' to change details, or 'cancel' to stop."}
+
+            return {"message": "Please type 'yes' to submit request, 'edit' to change details, or 'cancel' to stop."}
 
     return None
 

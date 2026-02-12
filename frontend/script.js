@@ -113,6 +113,44 @@ function showDatePicker() {
             return;
         }
         const selectedDate = new Date(input.value);
+        
+        // Business Hours Validation
+        const day = selectedDate.getDay(); // 0 = Sunday, 1 = Monday, ...
+        const hour = selectedDate.getHours();
+        
+        // Hours:
+        // Mon-Wed, Fri: 10am - 5pm (17)
+        // Thu: 11am - 7pm (19)
+        // Sat: 9am - 3pm (15)
+        // Sun: Closed
+
+        let isOpen = false;
+        let openTime = "";
+        
+        if (day === 0) {
+            // Sunday
+            isOpen = false;
+            openTime = "Closed";
+        } else if (day === 6) {
+            // Saturday: 9-15
+            isOpen = hour >= 9 && hour < 15;
+            openTime = "9:00 AM - 3:00 PM";
+        } else if (day === 4) {
+             // Thursday: 11-19
+             isOpen = hour >= 11 && hour < 19;
+             openTime = "11:00 AM - 7:00 PM";
+        } else {
+            // Mon, Tue, Wed, Fri: 10-17
+            isOpen = hour >= 10 && hour < 17;
+            openTime = "10:00 AM - 5:00 PM";
+        }
+
+        if (!isOpen) {
+             const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+             alert(`We are closed at that time on ${days[day]}s.\n\nBusiness Hours for ${days[day]}:\n${openTime}`);
+             return;
+        }
+
         const formattedDate = selectedDate.toLocaleString('en-US', {
             weekday: 'short',
             year: 'numeric',
@@ -168,5 +206,5 @@ addQuickReplies([
     "Information about our services and treatments",
     "Providers and clinic details",
     "Clinic days and hours open",
-    "Book appointment"
+    "Request appointment"
 ]);
