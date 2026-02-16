@@ -147,7 +147,9 @@ function showDatePicker() {
 
         if (!isOpen) {
              const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-             alert(`We are closed at that time on ${days[day]}s.\n\nBusiness Hours for ${days[day]}:\n${openTime}`);
+             container.remove();
+             addMessage(`We are closed at that time on ${days[day]}s. Business Hours for ${days[day]}: ${openTime}. Please select a different time.`, 'bot');
+             showDatePicker();
              return;
         }
 
