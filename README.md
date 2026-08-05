@@ -40,3 +40,4 @@ Open a new terminal and run:
 python3 -m http.server 3000 --directory frontend
 ```
 The frontend will be available at `http://localhost:3000`.
+# MYCN-Bot
